@@ -12,9 +12,11 @@ use crate::builder::ConfigBuilder;
 use crate::client::{EchMode, EchStatus};
 use crate::common_state::{CommonState, Protocol, Side};
 use crate::conn::{ConnectionCore, UnbufferedConnectionCommon};
+use crate::craft::FingerprintBuilder;
 use crate::crypto::{CryptoProvider, SupportedKxGroup};
 use crate::enums::{CipherSuite, ProtocolVersion, SignatureScheme};
 use crate::error::Error;
+#[cfg(feature = "logging")]
 use crate::log::trace;
 use crate::msgs::enums::NamedGroup;
 use crate::msgs::handshake::ClientExtension;
@@ -161,6 +163,10 @@ pub trait ResolvesClientCert: fmt::Debug + Send + Sync {
 /// [`RootCertStore`]: crate::RootCertStore
 #[derive(Clone, Debug)]
 pub struct ClientConfig {
+    /// Source of randomness and other crypto.
+    /// !craft! pub(super) -> pub(crate)
+    pub(crate) provider: Arc<CryptoProvider>,
+
     /// Which ALPN protocols we include in our client hello.
     /// If empty, no ALPN extension is sent.
     pub alpn_protocols: Vec<Vec<u8>>,
@@ -184,6 +190,11 @@ pub struct ClientConfig {
     /// How to decide what client auth certificate/keys to use.
     pub client_auth_cert_resolver: Arc<dyn ResolvesClientCert>,
 
+    /// Supported versions, in no particular order.  The default
+    /// is all supported versions.
+    /// !craft! pub(super) -> pub(crate)
+    pub(crate) versions: versions::EnabledVersions,
+
     /// Whether to send the Server Name Indication (SNI) extension
     /// during the client handshake.
     ///
@@ -204,6 +215,9 @@ pub struct ClientConfig {
     /// The default is false.
     pub enable_early_data: bool,
 
+    /// !craft! craft options
+    pub(crate) craft: crate::craft::CraftOptions,
+
     /// If set to `true`, requires the server to support the extended
     /// master secret extraction method defined in [RFC 7627].
     ///
@@ -221,14 +235,7 @@ pub struct ClientConfig {
 
     /// Provides the current system time
     pub time_provider: Arc<dyn TimeProvider>,
-
-    /// Source of randomness and other crypto.
-    pub(super) provider: Arc<CryptoProvider>,
-
-    /// Supported versions, in no particular order.  The default
-    /// is all supported versions.
-    pub(super) versions: versions::EnabledVersions,
-
+    
     /// How to verify the server certificate chain.
     pub(super) verifier: Arc<dyn verify::ServerCertVerifier>,
 
@@ -408,7 +415,8 @@ impl ClientConfig {
             .find(|&scs| scs.suite() == suite)
     }
 
-    pub(super) fn find_kx_group(
+    /// !craft! +pub(crate)
+    pub(crate) fn find_kx_group(
         &self,
         group: NamedGroup,
         version: ProtocolVersion,
@@ -424,6 +432,15 @@ impl ClientConfig {
         self.time_provider
             .current_time()
             .ok_or(Error::FailedToGetCurrentTime)
+    }
+
+    /// !craft!
+    ///
+    /// Applies a [`FingerprintBuilder`] to the client configuration.
+    ///
+    /// This method takes the current `ClientConfig`, applies the modifications defined by the `FingerprintBuilder` (which is derived from a [`crate::craft::Fingerprint`] or [`crate::craft::FingerprintSet`]), and returns the updated configuration.
+    pub fn with_fingerprint(self, fingerprint_builder: FingerprintBuilder) -> Self {
+        fingerprint_builder.patch_config(self)
     }
 }
 
@@ -814,7 +831,7 @@ impl ConnectionCore<ClientConnectionData> {
         common_state.protocol = proto;
         common_state.enable_secret_extraction = config.enable_secret_extraction;
         common_state.fips = config.fips();
-        let mut data = ClientConnectionData::new();
+        let mut data = ClientConnectionData::new(&config); // !craft! new() -> new(config: &ClientConfig)
 
         let mut cx = hs::ClientContext {
             common: &mut common_state,
@@ -950,14 +967,19 @@ pub struct ClientConnectionData {
     pub(super) early_data: EarlyData,
     pub(super) resumption_ciphersuite: Option<SupportedCipherSuite>,
     pub(super) ech_status: EchStatus,
+
+    /// !craft!
+    pub(crate) craft_connection_data: crate::craft::CraftConnectionData,
 }
 
 impl ClientConnectionData {
-    fn new() -> Self {
+    /// !craft! new() -> new(config: &ClientConfig)
+    fn new(config: &ClientConfig) -> Self {
         Self {
             early_data: EarlyData::new(),
             resumption_ciphersuite: None,
             ech_status: EchStatus::NotOffered,
+            craft_connection_data: crate::craft::CraftConnectionData::new(config),
         }
     }
 }

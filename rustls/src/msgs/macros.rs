@@ -36,6 +36,14 @@ macro_rules! enum_builder {
                     ,$enum_name::Unknown(_) => None,
                 }
             }
+
+            #[allow(dead_code)]
+            $enum_vis fn craft_is_unknown(&self) -> bool {
+                match self {
+                    $enum_name::Unknown(_) => true,
+                    _ => false,
+                }
+            }
         }
 
         impl Codec<'_> for $enum_name {

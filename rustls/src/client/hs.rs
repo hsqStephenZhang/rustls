@@ -442,6 +442,16 @@ fn emit_client_hello_for_retry(
         extensions: exts,
     };
 
+    // !craft! begin
+    config
+        .craft
+        .patch_extension(cx, config, retryreq, &mut chp_payload.extensions);
+
+    config
+        .craft
+        .patch_cipher(cx, &mut chp_payload.cipher_suites);
+    // !craft! end
+
     let ech_grease_ext = config
         .ech_mode
         .as_ref()

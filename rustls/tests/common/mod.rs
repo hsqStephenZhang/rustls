@@ -631,6 +631,11 @@ pub fn finish_client_config(
     config
         .with_root_certificates(root_store)
         .with_no_client_auth()
+        .with_fingerprint(
+            rustls::craft::CHROME_108
+                .test_alpn_http1
+                .builder(),
+        )
 }
 
 pub fn finish_client_config_with_creds(
@@ -646,6 +651,11 @@ pub fn finish_client_config_with_creds(
         .with_root_certificates(root_store)
         .with_client_auth_cert(kt.get_client_chain(), kt.get_client_key())
         .unwrap()
+        .with_fingerprint(
+            rustls::craft::CHROME_108
+                .test_alpn_http1
+                .builder(),
+        )
 }
 
 pub fn make_client_config(kt: KeyType) -> ClientConfig {
@@ -694,6 +704,11 @@ pub fn make_client_config_with_verifier(
         .dangerous()
         .with_custom_certificate_verifier(verifier_builder.build().unwrap())
         .with_no_client_auth()
+        .with_fingerprint(
+            rustls::craft::CHROME_108
+                .test_alpn_http1
+                .builder(),
+        )
 }
 
 pub fn webpki_client_verifier_builder(roots: Arc<RootCertStore>) -> ClientCertVerifierBuilder {

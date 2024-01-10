@@ -296,6 +296,12 @@ impl<'a> LengthPrefixedBuffer<'a> {
 impl Drop for LengthPrefixedBuffer<'_> {
     /// Goes back and corrects the length previously inserted at the start of the structure.
     fn drop(&mut self) {
+        // !craft! begin
+        // To support the CraftPadding extension: the extension has already deleted itself.
+        if self.buf.len() + 2 == self.len_offset {
+            return;
+        }
+        // !craft! end
         match self.size_len {
             ListLength::U8 => {
                 let len = self.buf.len() - self.len_offset - 1;

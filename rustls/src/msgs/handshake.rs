@@ -40,7 +40,7 @@ macro_rules! wrapped_payload(
   ($(#[$comment:meta])* $vis:vis struct $name:ident, $inner:ident,) => {
     $(#[$comment])*
     #[derive(Clone, Debug)]
-    $vis struct $name($inner);
+    $vis struct $name($vis /* !craft! +$vis */ $inner);
 
     impl From<Vec<u8>> for $name {
         fn from(v: Vec<u8>) -> Self {
@@ -573,6 +573,8 @@ pub enum ClientExtension {
     EncryptedClientHelloOuterExtensions(Vec<ExtensionType>),
     AuthorityNames(Vec<DistinguishedName>),
     Unknown(UnknownExtension),
+
+    CraftPadding(crate::craft::CraftPadding),
 }
 
 impl ClientExtension {
@@ -603,6 +605,7 @@ impl ClientExtension {
             }
             Self::AuthorityNames(_) => ExtensionType::CertificateAuthorities,
             Self::Unknown(ref r) => r.typ,
+            Self::CraftPadding(_) => ExtensionType::Padding,
         }
     }
 }
@@ -638,6 +641,7 @@ impl Codec<'_> for ClientExtension {
             Self::EncryptedClientHelloOuterExtensions(ref r) => r.encode(nested.buf),
             Self::AuthorityNames(ref r) => r.encode(nested.buf),
             Self::Unknown(ref r) => r.encode(nested.buf),
+            Self::CraftPadding(ref r) => r.encode(nested.buf),
         }
     }
 
@@ -1289,7 +1293,7 @@ impl HelloRetryRequest {
             .iter()
             .find(|x| x.ext_type() == ext)
     }
-
+    
     pub fn requested_key_share_group(&self) -> Option<NamedGroup> {
         let ext = self.find_extension(ExtensionType::KeyShare)?;
         match *ext {
@@ -1516,6 +1520,7 @@ pub(crate) const CERTIFICATE_MAX_SIZE_LIMIT: usize = 0x1_0000;
 #[derive(Debug)]
 pub(crate) enum CertificateExtension<'a> {
     CertificateStatus(CertificateStatus<'a>),
+    CraftDummySCT,
     Unknown(UnknownExtension),
 }
 
@@ -1524,6 +1529,7 @@ impl CertificateExtension<'_> {
         match *self {
             Self::CertificateStatus(_) => ExtensionType::StatusRequest,
             Self::Unknown(ref r) => r.typ,
+            Self::CraftDummySCT => ExtensionType::SCT,
         }
     }
 
@@ -1538,6 +1544,7 @@ impl CertificateExtension<'_> {
         match self {
             Self::CertificateStatus(st) => CertificateExtension::CertificateStatus(st.into_owned()),
             Self::Unknown(unk) => CertificateExtension::Unknown(unk),
+            Self::CraftDummySCT => CertificateExtension::CraftDummySCT,
         }
     }
 }
@@ -1550,6 +1557,7 @@ impl<'a> Codec<'a> for CertificateExtension<'a> {
         match *self {
             Self::CertificateStatus(ref r) => r.encode(nested.buf),
             Self::Unknown(ref r) => r.encode(nested.buf),
+            Self::CraftDummySCT => unimplemented!(),
         }
     }
 
@@ -1562,6 +1570,10 @@ impl<'a> Codec<'a> for CertificateExtension<'a> {
             ExtensionType::StatusRequest => {
                 let st = CertificateStatus::read(&mut sub)?;
                 Self::CertificateStatus(st)
+            }
+            ExtensionType::SCT => {
+                sub.take(sub.left());
+                Self::CraftDummySCT
             }
             _ => Self::Unknown(UnknownExtension::read(typ, &mut sub)),
         };
@@ -1625,7 +1637,7 @@ impl<'a> CertificateEntry<'a> {
     pub(crate) fn has_unknown_extension(&self) -> bool {
         self.exts
             .iter()
-            .any(|ext| ext.ext_type() != ExtensionType::StatusRequest)
+            .any(|ext| ext.ext_type().craft_is_unknown())
     }
 
     pub(crate) fn ocsp_response(&self) -> Option<&[u8]> {

@@ -90,13 +90,27 @@ pub(super) fn handle_server_hello(
             )
         })?;
 
-    let our_key_share = KeyExchangeChoice::new(&config, cx, our_key_share, their_key_share)
-        .map_err(|_| {
+    // TODO: fix this
+    // !craft! begin
+    let our_key_share = if let Some(key_share_alt) = cx
+        .data
+        .craft_connection_data
+        .find_key_share(their_key_share.group)
+    {
+        key_share_alt
+    } else {
+        our_key_share
+    };
+    // !craft! end
+
+    if our_key_share.group() != their_key_share.group {
+        return Err({
             cx.common.send_fatal_alert(
                 AlertDescription::IllegalParameter,
                 PeerMisbehaved::WrongGroupForKeyShare,
             )
         })?;
+    }
 
     let key_schedule_pre_handshake = if let (Some(selected_psk), Some(early_key_schedule)) =
         (server_hello.psk_index(), early_key_schedule)

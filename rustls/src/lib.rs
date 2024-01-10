@@ -686,3 +686,5 @@ mod hash_map {
     #[cfg(all(not(feature = "std"), feature = "hashbrown"))]
     pub(crate) use hashbrown::HashMap;
 }
+/// Core craft functionality
+pub mod craft;

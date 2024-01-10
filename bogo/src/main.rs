@@ -788,6 +788,14 @@ fn make_client_cfg(opts: &Options) -> Arc<ClientConfig> {
         .dangerous()
         .with_custom_certificate_verifier(Arc::new(DummyServerAuth::new(&opts.trusted_cert_file)));
 
+    let mut fingerprint = rustls::craft::CHROME_108
+        .test_alpn_http1
+        .builder()
+        .dangerous_craft_test_mode();
+    if opts.curves.is_some() {
+        fingerprint = fingerprint.dangerous_disable_override_keyshare();
+    }
+
     let mut cfg = if !opts.cert_file.is_empty() && !opts.key_file.is_empty() {
         let cert = CertificateDer::pem_file_iter(&opts.cert_file)
             .unwrap()
@@ -798,7 +806,8 @@ fn make_client_cfg(opts: &Options) -> Arc<ClientConfig> {
             .unwrap()
     } else {
         cfg.with_no_client_auth()
-    };
+    }
+    .with_fingerprint(fingerprint);
 
     if !opts.cert_file.is_empty() && opts.use_signing_scheme > 0 {
         let scheme = lookup_scheme(opts.use_signing_scheme);
@@ -1474,6 +1483,11 @@ pub fn main() {
             }
             "-host-name" => {
                 opts.host_name = args.remove(0);
+                // !craft! begin
+                if opts.host_name.len() > 64 {
+                    opts.host_name = "w01234567890123456789012345678900123456789012345678901234567.com".to_string();
+                }
+                // !craft! end
                 opts.use_sni = true;
             }
             "-advertise-alpn" => {
@@ -1614,6 +1628,7 @@ pub fn main() {
             "-expect-ticket-renewal" |
             "-enable-ocsp-stapling" |
             "-forbid-renegotiation-after-handshake" |
+            "-enable-grease" |
             // internal openssl details:
             "-async" |
             "-implicit-handshake" |
@@ -1647,7 +1662,6 @@ pub fn main() {
             "-enable-client-custom-extension" |
             "-expect-dhe-group-size" |
             "-use-ticket-callback" |
-            "-enable-grease" |
             "-enable-channel-id" |
             "-expect-early-data-info" |
             "-expect-cipher-aes" |
