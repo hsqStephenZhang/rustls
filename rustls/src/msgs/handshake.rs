@@ -1293,7 +1293,7 @@ impl HelloRetryRequest {
             .iter()
             .find(|x| x.ext_type() == ext)
     }
-    
+
     pub fn requested_key_share_group(&self) -> Option<NamedGroup> {
         let ext = self.find_extension(ExtensionType::KeyShare)?;
         match *ext {
@@ -2713,6 +2713,10 @@ impl<'a> HandshakeMessagePayload<'a> {
             HandshakeType::Certificate if vers == ProtocolVersion::TLSv1_3 => {
                 let p = CertificatePayloadTls13::read(&mut sub)?;
                 HandshakePayload::CertificateTls13(p)
+            }
+            HandshakeType::CompressedCertificate if vers == ProtocolVersion::TLSv1_3 => {
+                let p = CompressedCertificatePayload::read(&mut sub)?;
+                HandshakePayload::CompressedCertificate(p)
             }
             HandshakeType::Certificate => {
                 HandshakePayload::Certificate(CertificateChain::read(&mut sub)?)

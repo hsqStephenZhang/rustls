@@ -37,6 +37,7 @@ struct CraftOptionsImpl {
 impl CraftOptions {
     fn get(&self) -> &CraftOptionsImpl {
         assert!(self.0.is_some(), "The tls client config doesn't contain a fingerprint, please consider calling ClientConfig::with_fingerprint(...)");
+        
         self.0.as_ref().unwrap()
     }
 
@@ -934,15 +935,33 @@ impl FingerprintBuilder {
                     if !self.override_cert_compress {
                         continue;
                     }
-                    config.certificate_compression_algorithms = algos
-                        .iter()
-                        .map(|algo| match algo {
-                            crate::CertificateCompressionAlgorithm::Zlib => crate::ZLIB_DEFAULT,
-                            crate::CertificateCompressionAlgorithm::Brotli => crate::BROTLI_DEFAULT,
-                            crate::CertificateCompressionAlgorithm::Zstd => crate::ZSTD_DEFAULT,
-                            crate::CertificateCompressionAlgorithm::Unknown(_) => unimplemented!(),
-                        })
-                        .collect();
+                    let mut decompressors = Vec::new();
+                    let mut compressors = Vec::new();
+                    core::mem::swap(&mut config.cert_decompressors, &mut decompressors);
+                    core::mem::swap(&mut config.cert_compressors, &mut compressors);
+                    assert!(decompressors.len() == compressors.len());
+                    let mut map: HashMap<
+                        u16,
+                        (
+                            &dyn crate::compress::CertDecompressor,
+                            &dyn crate::compress::CertCompressor,
+                        ),
+                    > = HashMap::new();
+                    for (de, compres) in decompressors
+                        .into_iter()
+                        .zip(compressors.into_iter())
+                    {
+                        map.insert(de.algorithm().into(), (de, compres));
+                    }
+                    for algo in algos.iter() {
+                        let key: u16 = (*algo).into();
+                        if let Some((de, compres)) = map.remove(&key) {
+                            config.cert_decompressors.push(de);
+                            config.cert_compressors.push(compres);
+                        } else {
+                            assert!(!self.strict_mode);
+                        }
+                    }
                 }
                 _ => (),
             }

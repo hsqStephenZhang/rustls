@@ -405,6 +405,7 @@ mod test_macros;
 mod msgs;
 mod common_state;
 pub mod compress;
+pub use compress as compression;
 mod conn;
 /// Crypto provider interface.
 pub mod crypto;

@@ -40,6 +40,12 @@
     "TLS-ECH-Client-Reject-NoClientCertificate-TLS12-Async": "we disable TLS1.2 w/ ECH",
     "TLS-ECH-Client-Reject-ResumeInnerSession-TLS13": "assumes no outer GREASE PSK, we send GREASE PSK",
 #endif
+    "CertCompressionPriority-TLS13": "unimplemented: server-side",
+    "CertCompressionRandom-TLS13": "unimplemented: server-side",
+    "CertCompressionShrinks-TLS13": "unimplemented: server-side",
+    "CertCompressionExpands-TLS13": "unimplemented: server-side",
+    "DuplicateCertCompressionExt*": "unimplemented: server-side",
+    "TLS-ECH-*": "",
     "ALPS-*": "",
     "NPN-*": "",
     "NoCheckClientCertificateTypes": "we don't have this check",
@@ -158,6 +164,7 @@
     ":ENCRYPTED_LENGTH_TOO_LONG:": ":GARBAGE:"
   },
   "TestErrorMap": {
+    "CertCompressionTooLargeClient-TLS13": ":CERT_DECOMPRESSION_FAILED:",
     "EmptyCertificateList": ":NO_CERTS:",
     "SendInvalidRecordType": ":GARBAGE:",
     "NoSharedCipher": ":HANDSHAKE_FAILURE:",

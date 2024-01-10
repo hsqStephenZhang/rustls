@@ -28,7 +28,7 @@ use crate::time_provider::TimeProvider;
 use crate::unbuffered::{EncryptError, TransmitTlsData};
 #[cfg(feature = "std")]
 use crate::WantsVerifier;
-use crate::{compress, sign, verify, versions, KeyLog, WantsVersions};
+use crate::{compress, sign, verify, versions, CertificateCompressionAlgorithm, KeyLog, WantsVersions};
 #[cfg(doc)]
 use crate::{crypto, DistinguishedName};
 

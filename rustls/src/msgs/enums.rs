@@ -407,6 +407,18 @@ enum_builder! {
     }
 }
 
+enum_builder! {
+    /// The `CertificateCompressionAlgorithm` TLS protocol enum.  Values in this enum are taken
+    /// from the various RFCs covering TLS, and are listed by IANA.
+    /// The `Unknown` item is used when processing unrecognised ordinals.
+    #[repr(u16)]
+    pub enum CertificateCompressionAlgorithm {
+        Zlib => 0x01,
+        Brotli => 0x02,
+        Zstd => 0x03
+    }
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
     // These tests are intended to provide coverage and

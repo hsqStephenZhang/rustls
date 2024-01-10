@@ -37,6 +37,9 @@ zlib-rs = { workspace = true, optional = true }
 static_init = "1.0.3" #!craft!
 paste = "1.0" #!craft!
 
+flate2 = "1.0"
+zstd = "0.13.0"
+
 [features]
 default = ["aws_lc_rs", "logging", "std", "tls12"]
 

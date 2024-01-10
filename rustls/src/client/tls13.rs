@@ -614,7 +614,9 @@ impl State<ClientConnectionData> for ExpectCertificateOrCompressedCertificateOrC
             MessagePayload::Handshake {
                 parsed:
                     HandshakeMessagePayload {
-                        payload: HandshakePayload::CertificateTls13(..),
+                        payload:
+                            HandshakePayload::CertificateTls13(..)
+                            | HandshakePayload::CompressedCertificate(..),
                         ..
                     },
                 ..
@@ -819,6 +821,7 @@ impl State<ClientConnectionData> for ExpectCertificateOrCertReq {
                 &[ContentType::Handshake],
                 &[
                     HandshakeType::Certificate,
+                    HandshakeType::CompressedCertificate,
                     HandshakeType::CertificateRequest,
                 ],
             )),
