@@ -676,6 +676,10 @@ pub fn make_client_config(kt: KeyType) -> ClientConfig {
     finish_client_config(kt, client_config_builder())
 }
 
+pub fn make_client_config_no_fingerprint(kt: KeyType) -> ClientConfig {
+    finish_client_config_no_fingerprint(kt, client_config_builder())
+}
+
 pub fn make_client_config_with_kx_groups(
     kt: KeyType,
     kx_groups: Vec<&'static dyn rustls::crypto::SupportedKxGroup>,
@@ -712,7 +716,7 @@ pub fn make_client_config_with_versions(
     kt: KeyType,
     versions: &[&'static rustls::SupportedProtocolVersion],
 ) -> ClientConfig {
-    finish_client_config(kt, client_config_builder_with_versions(versions))
+    finish_client_config_no_fingerprint(kt, client_config_builder_with_versions(versions))
 }
 
 pub fn make_client_config_with_auth(kt: KeyType) -> ClientConfig {
@@ -758,7 +762,7 @@ pub fn webpki_server_verifier_builder(roots: Arc<RootCertStore>) -> ServerCertVe
 }
 
 pub fn make_pair(kt: KeyType) -> (ClientConnection, ServerConnection) {
-    make_pair_for_configs(make_client_config(kt), make_server_config(kt))
+    make_pair_for_configs(make_client_config_no_fingerprint(kt), make_server_config(kt))
 }
 
 pub fn make_pair_for_configs(

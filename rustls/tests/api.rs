@@ -240,7 +240,7 @@ mod test_raw_keys {
             );
 
             // Alter Server Hello server certificate extension and expect UnexpectedCertificateTypeExtension error
-            let client_config = make_client_config(*kt);
+            let client_config = make_client_config_no_fingerprint(*kt);
             let server_config_rpk = make_server_config(*kt);
             add_keylog_and_do_altered_handshake(
                 client_config,
@@ -252,7 +252,7 @@ mod test_raw_keys {
             );
 
             // Alter Server Hello client certificate extension and expect UnexpectedCertificateTypeExtension error
-            let client_config = make_client_config(*kt);
+            let client_config = make_client_config_no_fingerprint(*kt);
             let server_config_rpk = make_server_config(*kt);
             add_keylog_and_do_altered_handshake(
                 client_config,
@@ -1525,7 +1525,7 @@ fn check_sigalgs_reduced_by_ciphersuite(
     suite: CipherSuite,
     expected_sigalgs: Vec<SignatureScheme>,
 ) {
-    let client_config = finish_client_config(
+    let client_config = finish_client_config_no_fingerprint(
         kt,
         ClientConfig::builder_with_provider(
             CryptoProvider {
@@ -3093,7 +3093,7 @@ fn make_disjoint_suite_configs() -> (ClientConfig, ServerConfig) {
         cipher_suites: vec![cipher_suite::TLS13_AES_256_GCM_SHA384],
         ..provider::default_provider()
     };
-    let client_config = finish_client_config(
+    let client_config = finish_client_config_no_fingerprint(
         kt,
         ClientConfig::builder_with_provider(server_provider.into())
             .with_safe_default_protocol_versions()
@@ -3105,6 +3105,7 @@ fn make_disjoint_suite_configs() -> (ClientConfig, ServerConfig) {
 
 #[test]
 fn client_stream_handshake_error() {
+    CountingLogger::install();
     let (client_config, server_config) = make_disjoint_suite_configs();
     let (mut client, mut server) = make_pair_for_configs(client_config, server_config);
 
@@ -3710,7 +3711,7 @@ fn test_ciphersuites() -> Vec<(
 fn negotiated_ciphersuite_default() {
     for kt in ALL_KEY_TYPES {
         do_suite_and_kx_test(
-            make_client_config(*kt),
+            make_client_config_no_fingerprint(*kt),
             make_server_config(*kt),
             find_suite(CipherSuite::TLS13_AES_256_GCM_SHA384),
             expected_kx_for_version(&rustls::version::TLS13),
@@ -3731,7 +3732,7 @@ fn all_suites_covered() {
 fn negotiated_ciphersuite_client() {
     for (version, kt, suite) in test_ciphersuites() {
         let scs = find_suite(suite);
-        let client_config = finish_client_config(
+        let client_config = finish_client_config_no_fingerprint(
             kt,
             ClientConfig::builder_with_provider(
                 CryptoProvider {

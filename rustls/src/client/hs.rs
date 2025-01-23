@@ -447,9 +447,10 @@ fn emit_client_hello_for_retry(
     //     .craft
     //     .patch_extension(cx, config, retryreq, &mut chp_payload.extensions);
 
-    // config
-    //     .craft
-    //     .patch_cipher(cx, &mut chp_payload.cipher_suites);
+    config
+        .craft
+        .patch_cipher(cx, &mut chp_payload.cipher_suites);
+    // config.provider.cipher_suites.clear();
     // !craft! end
 
     let ech_grease_ext = config
@@ -856,6 +857,7 @@ impl State<ClientConnectionData> for ExpectServerHello {
 
         let suite = config
             .find_cipher_suite(server_hello.cipher_suite)
+            .or_else(|| config.find_patched_cipher_suite(server_hello.cipher_suite, cx))
             .ok_or_else(|| {
                 cx.common.send_fatal_alert(
                     AlertDescription::HandshakeFailure,
@@ -1070,7 +1072,10 @@ impl ExpectServerHelloOrHelloRetryRequest {
 
         // Or asks us to use a ciphersuite we didn't offer.
         let config = &self.next.input.config;
-        let Some(cs) = config.find_cipher_suite(hrr.cipher_suite) else {
+        let Some(cs) = config
+            .find_patched_cipher_suite(hrr.cipher_suite, &cx)
+            .or_else(||config.find_cipher_suite(hrr.cipher_suite))
+        else {
             return Err({
                 cx.common.send_fatal_alert(
                     AlertDescription::IllegalParameter,

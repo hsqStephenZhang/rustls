@@ -49,7 +49,7 @@ fn ffdhe_ciphersuite() {
     ];
 
     for (expected_protocol, expected_cipher_suite) in test_cases {
-        let client_config = finish_client_config(
+        let client_config = finish_client_config_no_fingerprint(
             KeyType::Rsa2048,
             rustls::ClientConfig::builder_with_provider(ffdhe::ffdhe_provider().into())
                 .with_protocol_versions(&[expected_protocol])
@@ -87,7 +87,7 @@ fn server_picks_ffdhe_group_when_clienthello_has_no_ffdhe_group_in_groups_ext() 
         Altered::InPlace
     }
 
-    let client_config = finish_client_config(
+    let client_config = finish_client_config_no_fingerprint(
         KeyType::Rsa2048,
         rustls::ClientConfig::builder_with_provider(ffdhe::ffdhe_provider().into())
             .with_protocol_versions(&[&rustls::version::TLS12])
@@ -119,7 +119,7 @@ fn server_picks_ffdhe_group_when_clienthello_has_no_groups_ext() {
         Altered::InPlace
     }
 
-    let client_config = finish_client_config(
+    let client_config = finish_client_config_no_fingerprint(
         KeyType::Rsa2048,
         rustls::ClientConfig::builder_with_provider(ffdhe::ffdhe_provider().into())
             .with_protocol_versions(&[&rustls::version::TLS12])
@@ -207,7 +207,7 @@ fn server_accepts_client_with_no_ecpoints_extension_and_only_ffdhe_cipher_suites
         Altered::InPlace
     }
 
-    let client_config = finish_client_config(
+    let client_config = finish_client_config_no_fingerprint(
         KeyType::Rsa2048,
         rustls::ClientConfig::builder_with_provider(ffdhe::ffdhe_provider().into())
             .with_protocol_versions(&[&rustls::version::TLS12])
@@ -313,7 +313,7 @@ fn server_avoids_cipher_suite_with_no_common_kx_groups() {
     ];
 
     for (client_kx_groups, protocol_version, expected_cipher_suite, expected_group) in test_cases {
-        let client_config = finish_client_config(
+        let client_config = finish_client_config_no_fingerprint(
             KeyType::Rsa2048,
             rustls::ClientConfig::builder_with_provider(
                 CryptoProvider {

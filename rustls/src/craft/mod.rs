@@ -64,6 +64,19 @@ impl CraftOptions {
                 .patch_cipher(cx, extension)
         });
     }
+
+    pub(crate) fn find_cipher(
+        &self,
+        cx: &Context<'_, ClientConnectionData>,
+        target: &CipherSuite,
+    ) -> Option<CipherSuite> {
+        self.0.as_ref().map(|v| {
+            v.fingerprint
+                .cipher(cx)
+                .into_iter()
+                .find(|c| c == target)
+        }).unwrap_or_default()
+    }
 }
 
 #[allow(dead_code)]
@@ -816,8 +829,11 @@ impl Fingerprint {
         cx: &mut Context<'_, ClientConnectionData>,
         extension: &mut Vec<CipherSuite>,
     ) {
-        *extension = self
-            .cipher
+        *extension = self.cipher(cx);
+    }
+
+    pub(crate) fn cipher(&self, cx: &Context<'_, ClientConnectionData>) -> Vec<CipherSuite> {
+        self.cipher
             .iter()
             .map(|c| {
                 c.val_or(
@@ -827,7 +843,7 @@ impl Fingerprint {
                         .get(BoringSslGreaseIndex::Cipher),
                 )
             })
-            .collect();
+            .collect()
     }
 }
 
@@ -988,10 +1004,6 @@ impl FingerprintBuilder {
 /// The macro allows specifying one or more compression algorithms that should be included
 /// in the `CertCompression` extension.
 ///
-/// # Examples
-/// ```
-/// cert_compress_ext!(crate::CertificateCompressionAlgorithm::Zlib, crate::CertificateCompressionAlgorithm::Brotli);
-/// ```
 #[macro_export]
 macro_rules! cert_compress_ext {
     ($($algo:expr),+) => {{

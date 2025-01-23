@@ -13,6 +13,7 @@ use crate::client::{EchMode, EchStatus};
 use crate::common_state::{CommonState, Protocol, Side};
 use crate::conn::{ConnectionCore, UnbufferedConnectionCommon};
 use crate::craft::FingerprintBuilder;
+use crate::crypto::aws_lc_rs::ALL_CIPHER_SUITES;
 use crate::crypto::{CryptoProvider, SupportedKxGroup};
 use crate::enums::{CipherSuite, ProtocolVersion, SignatureScheme};
 use crate::error::Error;
@@ -413,6 +414,21 @@ impl ClientConfig {
             .iter()
             .copied()
             .find(|&scs| scs.suite() == suite)
+    }
+
+    pub(super) fn find_patched_cipher_suite(
+        &self,
+        suite: CipherSuite,
+        cx: &hs::ClientContext<'_>,
+    ) -> Option<SupportedCipherSuite> {
+        let cipher = self.craft.find_cipher(cx, &suite);
+        match cipher {
+            Some(c) => ALL_CIPHER_SUITES
+                .iter()
+                .copied()
+                .find(|&scs| scs.suite() == c),
+            None => None,
+        }
     }
 
     /// !craft! +pub(crate)
