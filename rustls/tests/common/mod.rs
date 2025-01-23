@@ -638,6 +638,20 @@ pub fn finish_client_config(
         )
 }
 
+pub fn finish_client_config_no_fingerprint(
+    kt: KeyType,
+    config: rustls::ConfigBuilder<ClientConfig, rustls::WantsVerifier>,
+) -> ClientConfig {
+    let mut root_store = RootCertStore::empty();
+    root_store.add_parsable_certificates(
+        CertificateDer::pem_slice_iter(kt.bytes_for("ca.cert")).map(|result| result.unwrap()),
+    );
+
+    config
+        .with_root_certificates(root_store)
+        .with_no_client_auth()
+}
+
 pub fn finish_client_config_with_creds(
     kt: KeyType,
     config: rustls::ConfigBuilder<ClientConfig, rustls::WantsVerifier>,
@@ -676,6 +690,22 @@ pub fn make_client_config_with_kx_groups(
     .with_safe_default_protocol_versions()
     .unwrap();
     finish_client_config(kt, builder)
+}
+
+pub fn make_client_config_with_kx_groups_no_fingerprint(
+    kt: KeyType,
+    kx_groups: Vec<&'static dyn rustls::crypto::SupportedKxGroup>,
+) -> ClientConfig {
+    let builder = ClientConfig::builder_with_provider(
+        CryptoProvider {
+            kx_groups,
+            ..provider::default_provider()
+        }
+        .into(),
+    )
+    .with_safe_default_protocol_versions()
+    .unwrap();
+    finish_client_config_no_fingerprint(kt, builder)
 }
 
 pub fn make_client_config_with_versions(

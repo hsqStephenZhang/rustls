@@ -6230,9 +6230,10 @@ fn test_no_session_ticket_request_on_tls_1_3() {
 
 #[test]
 fn test_server_rejects_clients_without_any_kx_group_overlap() {
+    CountingLogger::install();
     for version in rustls::ALL_VERSIONS {
         let (mut client, mut server) = make_pair_for_configs(
-            make_client_config_with_kx_groups(KeyType::Rsa2048, vec![provider::kx_group::X25519]),
+            make_client_config_with_kx_groups_no_fingerprint(KeyType::Rsa2048, vec![provider::kx_group::X25519]),
             finish_server_config(
                 KeyType::Rsa2048,
                 ServerConfig::builder_with_provider(
@@ -6989,8 +6990,9 @@ impl rustls::crypto::SecureRandom for FaultyRandom {
 
 #[test]
 fn test_client_construction_fails_if_random_source_fails_in_first_request() {
+    const GREASY: [u8; 7] = ['a' as u8; 7];
     static FAULTY_RANDOM: FaultyRandom = FaultyRandom {
-        rand_queue: Mutex::new(b""),
+        rand_queue: Mutex::new(&GREASY),
     };
 
     let client_config = finish_client_config(
@@ -7039,9 +7041,10 @@ fn test_client_construction_fails_if_random_source_fails_in_second_request() {
 
 #[test]
 fn test_client_construction_requires_66_bytes_of_random_material() {
+    CountingLogger::install();
     static FAULTY_RANDOM: FaultyRandom = FaultyRandom {
         rand_queue: Mutex::new(
-            b"nice random number generator !!!!!\
+            b"this is for greasy data. nice random number generator !!!!!\
                                  it's really not very good is it?",
         ),
     };

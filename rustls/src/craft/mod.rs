@@ -48,9 +48,10 @@ impl CraftOptions {
         hrr: Option<&HelloRetryRequest>,
         extension: &mut Vec<ClientExtension>,
     ) {
-        self.get()
-            .fingerprint
-            .patch_extension(cx, config, hrr, extension)
+        self.0.as_ref().map(|v| {
+            v.fingerprint
+                .patch_extension(cx, config, hrr, extension)
+        });
     }
 
     pub(crate) fn patch_cipher(
@@ -58,9 +59,10 @@ impl CraftOptions {
         cx: &mut Context<'_, ClientConnectionData>,
         extension: &mut Vec<CipherSuite>,
     ) {
-        self.get()
-            .fingerprint
-            .patch_cipher(cx, extension)
+        self.0.as_ref().map(|v| {
+            v.fingerprint
+                .patch_cipher(cx, extension)
+        });
     }
 }
 
@@ -331,7 +333,10 @@ impl CraftExtension {
         ext_store: &mut HashMap<u16, ClientExtension>,
         hrr: Option<&HelloRetryRequest>,
     ) -> Result<ClientExtension, ()> {
-        let craft_config = config.craft.get();
+        let craft_config = match config.craft.0.as_ref() {
+            Some(v) => v,
+            None => return Err(()),
+        };
         Ok(match self {
             CraftExtension::Grease1 => Self::make_ext(
                 cx.data
@@ -400,7 +405,11 @@ impl CraftExtension {
                         })
                         .filter(|v| {
                             if !v.craft_is_unknown() && !origin_versions.contains(v) {
-                                assert!(!craft_config.strict_mode);
+                                assert!(
+                                    !craft_config.strict_mode,
+                                    "target version: {:?}, origin_version: {:?} {:?}",
+                                    v, origin_versions, craft_config
+                                );
                                 false
                             } else {
                                 true
@@ -460,7 +469,7 @@ impl CraftExtension {
                                 .any(|ks: &KeyShareEntry| ks.group == *group)
                             {
                                 let ks_data = match config
-                                    .find_kx_group(*group, ProtocolVersion::TLSv1_3)
+                                    .find_kx_group2(*group)
                                     .and_then(|v| v.start().ok())
                                 {
                                     Some(ks_data) => ks_data,
@@ -525,19 +534,24 @@ impl CraftExtension {
                     .ok_or(())?
             }
             CraftExtension::Protocols(protocols) => {
-                if craft_config.strict_mode {
-                    if protocols.len() != config.alpn_protocols.len()
-                        || protocols
-                            .iter()
-                            .zip(config.alpn_protocols.iter())
-                            .any(|(p1, p2)| p1 != &p2.as_slice())
-                    {
-                        panic!()
-                    }
-                }
+                // if craft_config.strict_mode {
+                //     if protocols.len() != config.alpn_protocols.len()
+                //         || protocols
+                //             .iter()
+                //             .zip(config.alpn_protocols.iter())
+                //             .any(|(p1, p2)| p1 != &p2.as_slice())
+                //     {
+                //         panic!("expecting {:?}, but got {:?}", config.alpn_protocols, protocols);
+                //     }
+                // }
                 ext_store
                     .remove(&ExtensionType::ALProtocolNegotiation.into())
-                    .ok_or(())?
+                    .ok_or(())?;
+                let buf = protocols
+                    .iter()
+                    .flat_map(|v| v.iter().cloned())
+                    .collect::<Vec<u8>>();
+                Self::make_ext(ExtensionType::ALProtocolNegotiation, buf)
             }
             CraftExtension::FakeDelegatedCredentials(delegated) => {
                 let mut buf = vec![];
@@ -688,7 +702,7 @@ impl Fingerprint {
             override_alpn: true,
             strict_mode: true,
             override_supported_curves: true,
-            override_version: true,
+            override_version: false,
             override_keyshare: true,
             override_cert_compress: true,
         }
@@ -951,8 +965,6 @@ impl FingerprintBuilder {
                         let key: u16 = (*algo).into();
                         if let Some(compres) = map.remove(&key) {
                             compressors.push(compres);
-                        } else {
-                            assert!(!self.strict_mode);
                         }
                     }
                     config.cert_compressors = compressors;

@@ -235,7 +235,7 @@ pub struct ClientConfig {
 
     /// Provides the current system time
     pub time_provider: Arc<dyn TimeProvider>,
-    
+
     /// How to verify the server certificate chain.
     pub(super) verifier: Arc<dyn verify::ServerCertVerifier>,
 
@@ -426,6 +426,18 @@ impl ClientConfig {
             .iter()
             .copied()
             .find(|skxg| skxg.usable_for_version(version) && skxg.name() == group)
+    }
+
+    /// !craft! +pub(crate)
+    pub(crate) fn find_kx_group2(
+        &self,
+        group: NamedGroup,
+    ) -> Option<&'static dyn SupportedKxGroup> {
+        self.provider
+            .kx_groups
+            .iter()
+            .copied()
+            .find(|skxg| skxg.name() == group)
     }
 
     pub(super) fn current_time(&self) -> Result<UnixTime, Error> {
