@@ -37,7 +37,7 @@ struct CraftOptionsImpl {
 impl CraftOptions {
     fn get(&self) -> &CraftOptionsImpl {
         assert!(self.0.is_some(), "The tls client config doesn't contain a fingerprint, please consider calling ClientConfig::with_fingerprint(...)");
-        
+
         self.0.as_ref().unwrap()
     }
 
@@ -504,15 +504,22 @@ impl CraftExtension {
             }
             CraftExtension::FakeCompressCert => Self::make_ext(0x001b.into(), vec![2, 0, 0]),
             CraftExtension::CompressCert(algorithms) => {
-                // if craft_config.strict_mode {
-                //     config
-                //         .cert_decompressors
-                //         .iter()
-                //         .map(|dec| dec.algorithm())
-                //         .for_each(|(a, b)| {
-                //             assert_eq!(a.alg, *b);
-                //         });
-                // }
+                if craft_config.strict_mode {
+                    config
+                        .cert_decompressors
+                        .iter()
+                        .zip(config.cert_compressors.iter())
+                        .for_each(|(a, b)| {
+                            assert_eq!(a.algorithm(), b.algorithm());
+                        });
+                    config
+                        .cert_decompressors
+                        .iter()
+                        .zip(algorithms.iter())
+                        .for_each(|(a, b)| {
+                            assert_eq!(a.algorithm(), *b);
+                        });
+                }
                 ext_store
                     .remove(&ExtensionType::CompressCertificate.into())
                     .ok_or(())?
@@ -573,7 +580,7 @@ impl Codec<'_> for CraftPadding {
         }
     }
 
-    fn read(_: &mut crate::msgs::codec::Reader) -> Result<Self, crate::InvalidMessage> {
+    fn read(_: &mut crate::msgs::codec::Reader<'_>) -> Result<Self, crate::InvalidMessage> {
         todo!()
     }
 
@@ -935,33 +942,20 @@ impl FingerprintBuilder {
                     if !self.override_cert_compress {
                         continue;
                     }
-                    let mut decompressors = Vec::new();
                     let mut compressors = Vec::new();
-                    core::mem::swap(&mut config.cert_decompressors, &mut decompressors);
-                    core::mem::swap(&mut config.cert_compressors, &mut compressors);
-                    assert!(decompressors.len() == compressors.len());
-                    let mut map: HashMap<
-                        u16,
-                        (
-                            &dyn crate::compress::CertDecompressor,
-                            &dyn crate::compress::CertCompressor,
-                        ),
-                    > = HashMap::new();
-                    for (de, compres) in decompressors
-                        .into_iter()
-                        .zip(compressors.into_iter())
-                    {
-                        map.insert(de.algorithm().into(), (de, compres));
+                    let mut map: HashMap<u16, _> = HashMap::new();
+                    for compres in config.cert_compressors.into_iter() {
+                        map.insert(compres.algorithm().into(), compres);
                     }
                     for algo in algos.iter() {
                         let key: u16 = (*algo).into();
-                        if let Some((de, compres)) = map.remove(&key) {
-                            config.cert_decompressors.push(de);
-                            config.cert_compressors.push(compres);
+                        if let Some(compres) = map.remove(&key) {
+                            compressors.push(compres);
                         } else {
                             assert!(!self.strict_mode);
                         }
                     }
+                    config.cert_compressors = compressors;
                 }
                 _ => (),
             }

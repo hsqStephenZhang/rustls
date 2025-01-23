@@ -90,7 +90,6 @@ pub(super) fn handle_server_hello(
             )
         })?;
 
-    // TODO: fix this
     // !craft! begin
     let our_key_share = if let Some(key_share_alt) = cx
         .data
@@ -99,7 +98,15 @@ pub(super) fn handle_server_hello(
     {
         key_share_alt
     } else {
-        our_key_share
+        // fallback as the rustls's original plan
+        let res = KeyExchangeChoice::new(&config, cx, our_key_share, their_key_share)
+        .map_err(|_| {
+            cx.common.send_fatal_alert(
+                AlertDescription::IllegalParameter,
+                PeerMisbehaved::WrongGroupForKeyShare,
+            )
+        })?;
+        Box::new(res)
     };
     // !craft! end
 
@@ -109,7 +116,7 @@ pub(super) fn handle_server_hello(
                 AlertDescription::IllegalParameter,
                 PeerMisbehaved::WrongGroupForKeyShare,
             )
-        })?;
+        });
     }
 
     let key_schedule_pre_handshake = if let (Some(selected_psk), Some(early_key_schedule)) =
@@ -233,6 +240,29 @@ enum KeyExchangeChoice {
     Component(Box<dyn ActiveKeyExchange>),
 }
 
+impl ActiveKeyExchange for KeyExchangeChoice {
+    fn group(&self) -> crate::NamedGroup {
+        match self {
+            Self::Whole(akx) => akx.group(),
+            Self::Component(akx) => akx.group(),
+        }
+    }
+
+    fn complete(self: Box<Self>, peer_pub_key: &[u8]) -> Result<SharedSecret, Error> {
+        match *self {
+            Self::Whole(akx) => akx.complete(peer_pub_key),
+            Self::Component(akx) => akx.complete_hybrid_component(peer_pub_key),
+        }
+    }
+    
+    fn pub_key(&self) -> &[u8] {
+        match self {
+            Self::Whole(akx) => akx.pub_key(),
+            Self::Component(akx) => akx.pub_key(),
+        }
+    }
+}
+
 impl KeyExchangeChoice {
     /// Decide between `our_key_share` or `our_key_share.hybrid_component()`
     /// based on the selection of the server expressed in `their_key_share`.
@@ -262,13 +292,6 @@ impl KeyExchangeChoice {
         cx.common.kx_state = KxState::Start(actual_skxg);
 
         Ok(Self::Component(our_key_share))
-    }
-
-    fn complete(self, peer_pub_key: &[u8]) -> Result<SharedSecret, Error> {
-        match self {
-            Self::Whole(akx) => akx.complete(peer_pub_key),
-            Self::Component(akx) => akx.complete_hybrid_component(peer_pub_key),
-        }
     }
 }
 
@@ -614,9 +637,7 @@ impl State<ClientConnectionData> for ExpectCertificateOrCompressedCertificateOrC
             MessagePayload::Handshake {
                 parsed:
                     HandshakeMessagePayload {
-                        payload:
-                            HandshakePayload::CertificateTls13(..)
-                            | HandshakePayload::CompressedCertificate(..),
+                        payload: HandshakePayload::CertificateTls13(..),
                         ..
                     },
                 ..

@@ -4,25 +4,10 @@
 // https://boringssl.googlesource.com/boringssl/+/master/ssl/test
 //
 
-use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
-use rustls::client::{ClientConfig, ClientConnection, Resumption, WebPkiServerVerifier};
-use rustls::crypto::{CryptoProvider, SupportedKxGroup};
-use rustls::internal::msgs::codec::Codec;
-use rustls::internal::msgs::persist::ServerSessionValue;
-use rustls::server::danger::{ClientCertVerified, ClientCertVerifier};
-use rustls::server::{ClientHello, ServerConfig, ServerConnection, WebPkiClientVerifier};
-use rustls::{
-    self, client, server, sign, version, AlertDescription, CertificateError, Connection,
-    DigitallySignedStruct, DistinguishedName, Error, InvalidMessage, NamedGroup, PeerIncompatible,
-    PeerMisbehaved, ProtocolVersion, RootCertStore, Side, SignatureAlgorithm, SignatureScheme,
-    SupportedProtocolVersion,
-};
-use rustls::{CertificateCompression, CertificateCompressionAlgorithm, CompressionProvider};
-
-#[cfg(all(not(feature = "ring"), feature = "aws_lc_rs"))]
-use rustls::crypto::aws_lc_rs as provider;
-#[cfg(feature = "ring")]
-use rustls::crypto::ring as provider;
+use std::fmt::{Debug, Formatter};
+use std::io::{self, Read, Write};
+use std::sync::Arc;
+use std::{env, net, process, thread, time};
 
 use base64::prelude::{Engine, BASE64_STANDARD};
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
@@ -105,7 +90,23 @@ struct Options {
     expect_version: u16,
     resumption_delay: u32,
     queue_early_data_after_received_messages: Vec<usize>,
-    install_cert_compression_algs: Vec<u16>,
+    require_ems: bool,
+    expect_handshake_kind: Option<Vec<HandshakeKind>>,
+    expect_handshake_kind_resumed: Option<Vec<HandshakeKind>>,
+    install_cert_compression_algs: CompressionAlgs,
+    selected_provider: SelectedProvider,
+    provider: CryptoProvider,
+    ech_config_list: Option<EchConfigListBytes<'static>>,
+    expect_ech_accept: bool,
+    expect_ech_retry_configs: Option<EchConfigListBytes<'static>>,
+    on_resume_ech_config_list: Option<EchConfigListBytes<'static>>,
+    on_resume_expect_ech_accept: bool,
+    on_initial_expect_ech_accept: bool,
+    enable_ech_grease: bool,
+    send_key_update: bool,
+    expect_curve_id: Option<NamedGroup>,
+    on_initial_expect_curve_id: Option<NamedGroup>,
+    on_resume_expect_curve_id: Option<NamedGroup>,
 }
 
 impl Options {
@@ -158,7 +159,23 @@ impl Options {
             expect_version: 0,
             resumption_delay: 0,
             queue_early_data_after_received_messages: vec![],
-            install_cert_compression_algs: vec![],
+            require_ems: false,
+            expect_handshake_kind: None,
+            expect_handshake_kind_resumed: Some(vec![HandshakeKind::Resumed]),
+            install_cert_compression_algs: CompressionAlgs::None,
+            selected_provider,
+            provider: selected_provider.provider(),
+            ech_config_list: None,
+            expect_ech_accept: false,
+            expect_ech_retry_configs: None,
+            on_resume_ech_config_list: None,
+            on_resume_expect_ech_accept: false,
+            on_initial_expect_ech_accept: false,
+            enable_ech_grease: false,
+            send_key_update: false,
+            expect_curve_id: None,
+            on_initial_expect_curve_id: None,
+            on_resume_expect_curve_id: None,
         }
     }
 
@@ -271,90 +288,6 @@ fn load_root_certs(filename: &str) -> Arc<RootCertStore> {
             .map(|item| item.unwrap()),
     );
     Arc::new(roots)
-}
-
-const SHRINKING_COMPRESSION_ALG_ID: u16 = 0xff01;
-const EXPANDING_COMPRESSION_ALG_ID: u16 = 0xff02;
-
-struct AdhocCompressionProvider {
-    compress_fn: &'static (dyn Fn(Vec<u8>, &[u8]) -> std::io::Result<Vec<u8>> + Send + Sync),
-    decompress_fn: &'static (dyn Fn(Vec<u8>, &[u8]) -> std::io::Result<Vec<u8>> + Send + Sync),
-}
-
-impl Debug for AdhocCompressionProvider {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("AdhocCompressionProvider")
-            .finish()
-    }
-}
-
-impl CompressionProvider for AdhocCompressionProvider {
-    fn compress(&self, writer: Vec<u8>, input: &[u8]) -> io::Result<Vec<u8>> {
-        (self.compress_fn)(writer, input)
-    }
-
-    fn decompress(&self, writer: Vec<u8>, input: &[u8]) -> io::Result<Vec<u8>> {
-        (self.decompress_fn)(writer, input)
-    }
-}
-
-static EXPANDING_COMPRESSION: CertificateCompression = CertificateCompression {
-    alg: CertificateCompressionAlgorithm::Unknown(EXPANDING_COMPRESSION_ALG_ID),
-    provider: &AdhocCompressionProvider {
-        // Add `expanding` algorithm
-        // https://github.com/google/boringssl/blob/a2278d4d2cabe73f6663e3299ea7808edfa306b9/ssl/test/runner/runner.go#L15930
-        //
-        // expanding_prefix is just some arbitrary byte string. This has to match the value in the shim.
-        compress_fn: &|writer: Vec<u8>, input: &[u8]| {
-            let expanding_prefix = [1, 2, 3, 4].as_ref();
-            let mut w = writer;
-            w.extend_from_slice(expanding_prefix);
-            w.extend_from_slice(input);
-            Ok(w)
-        },
-        decompress_fn: &|_writer: Vec<u8>, input: &[u8]| {
-            let expanding_prefix = [1, 2, 3, 4].as_ref();
-            if !input.starts_with(expanding_prefix) {
-                panic!("cannot decompress certificate message {:x?}", input);
-            }
-
-            Ok(input[expanding_prefix.len()..].to_vec())
-        },
-    },
-};
-
-static SHRINKING_COMPRESSION: CertificateCompression = CertificateCompression {
-    alg: CertificateCompressionAlgorithm::Unknown(SHRINKING_COMPRESSION_ALG_ID),
-    provider: &AdhocCompressionProvider {
-        // Add `shrinking` algorithm
-        // https://github.com/google/boringssl/blob/a2278d4d2cabe73f6663e3299ea7808edfa306b9/ssl/test/runner/runner.go#L15912
-        //
-        // shrinking_prefix is the first two bytes of a Certificate message
-        compress_fn: &|_writer: Vec<u8>, input: &[u8]| {
-            let shrinking_prefix = [0, 0].as_ref();
-            if !input.starts_with(&shrinking_prefix) {
-                panic!("cannot compress certificate message {:x?}", input);
-            }
-
-            Ok(input[shrinking_prefix.len()..].to_vec())
-        },
-        decompress_fn: &|writer: Vec<u8>, input: &[u8]| {
-            let shrinking_prefix = [0, 0].as_ref();
-            let mut w = writer;
-            w.extend_from_slice(shrinking_prefix);
-            w.extend_from_slice(input);
-
-            Ok(w)
-        },
-    },
-};
-
-fn get_certificate_compression_algorithms(id: u16) -> &'static CertificateCompression {
-    match id {
-        EXPANDING_COMPRESSION_ALG_ID => &EXPANDING_COMPRESSION,
-        SHRINKING_COMPRESSION_ALG_ID => &SHRINKING_COMPRESSION,
-        _ => unimplemented!(),
-    }
 }
 
 fn split_protocols(protos: &str) -> Vec<String> {
@@ -576,7 +509,6 @@ impl client::ResolvesClientCert for FixedSignatureSchemeClientCertResolver {
         self.resolver.has_certs()
     }
 }
-
 
 fn lookup_scheme(scheme: u16) -> SignatureScheme {
     match scheme {
@@ -856,14 +788,6 @@ fn make_client_cfg(opts: &Options) -> Arc<ClientConfig> {
         .dangerous()
         .with_custom_certificate_verifier(Arc::new(DummyServerAuth::new(&opts.trusted_cert_file)));
 
-    let mut fingerprint = rustls::craft::CHROME_108
-        .test_alpn_http1
-        .builder()
-        .dangerous_craft_test_mode();
-    if opts.curves.is_some() {
-        fingerprint = fingerprint.dangerous_disable_override_keyshare();
-    }
-
     let mut cfg = if !opts.cert_file.is_empty() && !opts.key_file.is_empty() {
         let cert = CertificateDer::pem_file_iter(&opts.cert_file)
             .unwrap()
@@ -874,8 +798,7 @@ fn make_client_cfg(opts: &Options) -> Arc<ClientConfig> {
             .unwrap()
     } else {
         cfg.with_no_client_auth()
-    }
-    .with_fingerprint(fingerprint);
+    };
 
     if !opts.cert_file.is_empty() && opts.use_signing_scheme > 0 {
         let scheme = lookup_scheme(opts.use_signing_scheme);
@@ -1050,8 +973,6 @@ fn handle_err(opts: &Options, err: Error) -> ! {
         Error::InvalidCertificate(CertificateError::BadSignature) => quit(":BAD_SIGNATURE:"),
         Error::InvalidCertificate(e) => quit(&format!(":BAD_CERT: ({:?})", e)),
         Error::PeerSentOversizedRecord => quit(":DATA_LENGTH_TOO_LONG:"),
-        Error::FailedCertificateDecompression => quit(":CERT_DECOMPRESSION_FAILED:"),
-        Error::UnknownCertCompressionAlg => quit(":UNKNOWN_CERT_COMPRESSION_ALG:"),
         _ => {
             println_err!("unhandled error: {:?}", err);
             quit(":FIXME:")
@@ -1553,11 +1474,6 @@ pub fn main() {
             }
             "-host-name" => {
                 opts.host_name = args.remove(0);
-                // !craft! begin
-                if opts.host_name.len() > 64 {
-                    opts.host_name = "w01234567890123456789012345678900123456789012345678901234567.com".to_string();
-                }
-                // !craft! end
                 opts.use_sni = true;
             }
             "-advertise-alpn" => {
@@ -1698,7 +1614,6 @@ pub fn main() {
             "-expect-ticket-renewal" |
             "-enable-ocsp-stapling" |
             "-forbid-renegotiation-after-handshake" |
-            "-enable-grease" |
             // internal openssl details:
             "-async" |
             "-implicit-handshake" |
@@ -1732,6 +1647,7 @@ pub fn main() {
             "-enable-client-custom-extension" |
             "-expect-dhe-group-size" |
             "-use-ticket-callback" |
+            "-enable-grease" |
             "-enable-channel-id" |
             "-expect-early-data-info" |
             "-expect-cipher-aes" |
