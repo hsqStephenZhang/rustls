@@ -20,8 +20,8 @@ use crate::{
 use alloc::sync::Arc;
 use core::fmt::Debug;
 use std::boxed::Box;
-use std::vec;
 use std::{collections::HashMap, vec::Vec};
+use std::vec;
 
 use static_init::dynamic;
 
@@ -304,9 +304,6 @@ pub enum CraftExtension {
     /// Hardcoded fake BoringSSL ApplicationSettings.
     FakeApplicationSettings,
 
-    /// Hardcoded fake CompressCert extension that provides no compression algorithm
-    FakeCompressCert,
-
     /// CompressCert extension
     CompressCert(&'static [crate::CertificateCompressionAlgorithm]),
 
@@ -335,6 +332,15 @@ macro_rules! get_origin_ext {
     };
 }
 
+/// extension type for ApplicationSettings
+pub const EXTENSION_APPLICATION_SETTINGS: u16 = 17513;
+/// extension type for CompressCertificate
+pub const EXTENSION_COMPRESS_CERTIFICATE: u16 = 0x001b;
+/// extension type for DelegatedCredentials
+pub const EXTENSION_DELEGATED_CREDENTIALS: u16 = 34;
+/// extension type for RecordSizeLimit
+pub const EXTENSION_LIMIT_RECORD_SIZE: u16 = 28;
+
 impl CraftExtension {
     fn make_ext(typ: ExtensionType, payload: Vec<u8>) -> ClientExtension {
         ClientExtension::Unknown(UnknownExtension {
@@ -355,6 +361,7 @@ impl CraftExtension {
             None => return Err(()),
         };
         Ok(match self {
+            // new extension
             CraftExtension::Grease1 => Self::make_ext(
                 cx.data
                     .craft_connection_data
@@ -363,6 +370,7 @@ impl CraftExtension {
                     .into(),
                 Vec::new(),
             ),
+            // new extension
             CraftExtension::Grease2 => Self::make_ext(
                 cx.data
                     .craft_connection_data
@@ -371,9 +379,11 @@ impl CraftExtension {
                     .into(),
                 vec![0],
             ),
+            // new extension
             CraftExtension::RenegotiationInfo => {
                 Self::make_ext(ExtensionType::RenegotiationInfo, vec![0])
             }
+            // remove the original and craft a new one
             CraftExtension::SupportedCurves(curves) => {
                 let origin_curves = get_origin_ext!(
                     ext_store.remove(&ExtensionType::EllipticCurves.into()),
@@ -403,6 +413,7 @@ impl CraftExtension {
                         .collect(),
                 )
             }
+            // remove the original and craft a new one
             CraftExtension::SupportedVersions(versions) => {
                 let origin_versions = get_origin_ext!(
                     ext_store.remove(&ExtensionType::SupportedVersions.into()),
@@ -435,9 +446,11 @@ impl CraftExtension {
                         .collect(),
                 )
             }
+            // new extension
             CraftExtension::SignedCertificateTimestamp => {
                 Self::make_ext(ExtensionType::SCT, vec![])
             }
+            // remove the original and craft a new one
             CraftExtension::KeyShare(key_share_spec) => {
                 if hrr.is_some()
                     && hrr
@@ -514,9 +527,17 @@ impl CraftExtension {
 
                 ClientExtension::KeyShare(key_shares)
             }
+            // new extension
             CraftExtension::FakeApplicationSettings => {
-                Self::make_ext(17513.into(), vec![0, 3, 2, b'h', b'2'])
+                // (0,3) -> total settings length
+                // 2 -> length of the first setting
+                // 'h2' -> the first setting
+                Self::make_ext(
+                    EXTENSION_APPLICATION_SETTINGS.into(),
+                    vec![0, 3, 2, b'h', b'2'],
+                )
             }
+            // new extension
             CraftExtension::Padding => {
                 ClientExtension::CraftPadding(CraftPadding {
                     psk_len: if let Some(ClientExtension::PresharedKey(psk)) =
@@ -528,8 +549,9 @@ impl CraftExtension {
                     },
                 })
             }
-            CraftExtension::FakeCompressCert => Self::make_ext(0x001b.into(), vec![2, 0, 0]),
+            // remove the original and craft a new one
             CraftExtension::CompressCert(algorithms) => {
+                // only do some extra checks
                 if craft_config.strict_mode {
                     config
                         .cert_decompressors
@@ -546,21 +568,14 @@ impl CraftExtension {
                             assert_eq!(a.algorithm(), *b);
                         });
                 }
-                ext_store
-                    .remove(&ExtensionType::CompressCertificate.into())
-                    .ok_or(())?
+                // changes nothing, this removed one will be inserted back
+                let _ = ext_store.remove(&ExtensionType::CompressCertificate.into());
+                ClientExtension::CertificateCompressionAlgorithms(
+                    algorithms.iter().map(|v| *v).collect(),
+                )
             }
+            // remove the original and craft a new one
             CraftExtension::Protocols(protocols) => {
-                // if craft_config.strict_mode {
-                //     if protocols.len() != config.alpn_protocols.len()
-                //         || protocols
-                //             .iter()
-                //             .zip(config.alpn_protocols.iter())
-                //             .any(|(p1, p2)| p1 != &p2.as_slice())
-                //     {
-                //         panic!("expecting {:?}, but got {:?}", config.alpn_protocols, protocols);
-                //     }
-                // }
                 ext_store
                     .remove(&ExtensionType::ALProtocolNegotiation.into())
                     .ok_or(())?;
@@ -570,6 +585,7 @@ impl CraftExtension {
                     .collect::<Vec<_>>();
                 ClientExtension::Protocols(protocols)
             }
+            // new extension
             CraftExtension::FakeDelegatedCredentials(delegated) => {
                 let mut buf = vec![];
                 {
@@ -579,11 +595,13 @@ impl CraftExtension {
                         sig.encode(length_padded.buf);
                     }
                 };
-                Self::make_ext(34.into(), buf)
+                Self::make_ext(EXTENSION_DELEGATED_CREDENTIALS.into(), buf)
             }
-            CraftExtension::FakeRecordSizeLimit(limit) => {
-                Self::make_ext(28.into(), limit.to_be_bytes().to_vec())
-            }
+            // new extension
+            CraftExtension::FakeRecordSizeLimit(limit) => Self::make_ext(
+                EXTENSION_LIMIT_RECORD_SIZE.into(),
+                limit.to_be_bytes().to_vec(),
+            ),
         })
     }
 }
