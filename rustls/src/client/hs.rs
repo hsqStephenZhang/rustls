@@ -443,9 +443,9 @@ fn emit_client_hello_for_retry(
     };
 
     // !craft! begin
-    // config
-    //     .craft
-    //     .patch_extension(cx, config, retryreq, &mut chp_payload.extensions);
+    config
+        .craft
+        .patch_extension(cx, config, retryreq, &mut chp_payload.extensions);
 
     config
         .craft

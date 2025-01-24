@@ -2074,6 +2074,7 @@ fn client_cert_resolve_server_added_hint() {
 
 #[test]
 fn client_auth_works() {
+    CountingLogger::install();
     for kt in ALL_KEY_TYPES {
         let server_config = Arc::new(make_server_config_with_mandatory_client_auth(*kt));
 
@@ -2081,6 +2082,7 @@ fn client_auth_works() {
             let client_config = make_client_config_with_versions_with_auth(*kt, &[version]);
             let (mut client, mut server) =
                 make_pair_for_arc_configs(&Arc::new(client_config), &server_config);
+            log::debug!("kt, version: {:?}, {:?}", kt, version);
             do_handshake(&mut client, &mut server);
         }
     }
@@ -6234,7 +6236,10 @@ fn test_server_rejects_clients_without_any_kx_group_overlap() {
     CountingLogger::install();
     for version in rustls::ALL_VERSIONS {
         let (mut client, mut server) = make_pair_for_configs(
-            make_client_config_with_kx_groups_no_fingerprint(KeyType::Rsa2048, vec![provider::kx_group::X25519]),
+            make_client_config_with_kx_groups_no_fingerprint(
+                KeyType::Rsa2048,
+                vec![provider::kx_group::X25519],
+            ),
             finish_server_config(
                 KeyType::Rsa2048,
                 ServerConfig::builder_with_provider(

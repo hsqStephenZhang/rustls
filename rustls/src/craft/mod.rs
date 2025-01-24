@@ -9,6 +9,7 @@ use crate::msgs::codec::{Codec, LengthPrefixedBuffer};
 use crate::msgs::enums::{ECPointFormat, ExtensionType, PSKKeyExchangeMode};
 use crate::msgs::handshake::{
     CertificateStatusRequest, ClientExtension, KeyShareEntry, OcspCertificateStatusRequest,
+    ProtocolName,
 };
 use crate::msgs::handshake::{HelloRetryRequest, UnknownExtension};
 use crate::version::{TLS12, TLS13};
@@ -70,12 +71,15 @@ impl CraftOptions {
         cx: &Context<'_, ClientConnectionData>,
         target: &CipherSuite,
     ) -> Option<CipherSuite> {
-        self.0.as_ref().map(|v| {
-            v.fingerprint
-                .cipher(cx)
-                .into_iter()
-                .find(|c| c == target)
-        }).unwrap_or_default()
+        self.0
+            .as_ref()
+            .map(|v| {
+                v.fingerprint
+                    .cipher(cx)
+                    .into_iter()
+                    .find(|c| c == target)
+            })
+            .unwrap_or_default()
     }
 }
 
@@ -560,11 +564,11 @@ impl CraftExtension {
                 ext_store
                     .remove(&ExtensionType::ALProtocolNegotiation.into())
                     .ok_or(())?;
-                let buf = protocols
-                    .iter()
-                    .flat_map(|v| v.iter().cloned())
-                    .collect::<Vec<u8>>();
-                Self::make_ext(ExtensionType::ALProtocolNegotiation, buf)
+                let protocols: Vec<ProtocolName> = protocols
+                    .into_iter()
+                    .map(|x| ProtocolName::from(x.to_vec()))
+                    .collect::<Vec<_>>();
+                ClientExtension::Protocols(protocols)
             }
             CraftExtension::FakeDelegatedCredentials(delegated) => {
                 let mut buf = vec![];
@@ -713,7 +717,7 @@ impl Fingerprint {
         FingerprintBuilder {
             fingerprint: self.clone(),
             override_alpn: true,
-            strict_mode: true,
+            strict_mode: false,
             override_supported_curves: true,
             override_version: false,
             override_keyshare: true,

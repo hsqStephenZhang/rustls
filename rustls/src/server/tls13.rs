@@ -786,6 +786,7 @@ mod client_hello {
         schemes: &[SignatureScheme],
     ) -> Result<(), Error> {
         let message = construct_server_verify_message(&flight.transcript.current_hash());
+        log::debug!("signing key in emit_certificate_verify_tls13: {:?}, offered: {:?}", signing_key, schemes);
 
         let signer = signing_key
             .choose_scheme(schemes)
