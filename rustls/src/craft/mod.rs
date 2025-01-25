@@ -1059,3 +1059,13 @@ impl std::ops::Deref for FingerprintSet {
         &self.main
     }
 }
+
+impl FingerprintSet {
+    /// get fingerprint by alpn
+    pub fn get(&self, alpn: bool) -> &Fingerprint {
+        match alpn {
+            true => &self.test_no_alpn,
+            false => &self.test_alpn_http1,
+        }
+    }
+}

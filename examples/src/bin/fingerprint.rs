@@ -1,18 +1,40 @@
-//! This is the simplest possible client using rustls that does something useful:
-//! it accepts the default configuration, loads some root certs, and then connects
-//! to google.com and issues a basic HTTP request.  The response is printed to stdout.
-//!
-//! It makes use of rustls::Stream to treat the underlying TLS connection as a basic
-//! bi-directional stream -- the underlying IO is performed transparently.
-//!
-//! Note that `unwrap()` is used to deal with networking errors; this is not something
-//! that is sensible outside of example code.
-
+//! the ja4 fingerprint should be:
+//! chrome108: t13d1516h1_8daaf6152771_5fb3489db586
+//! firefox: t13d1516h1_8daaf6152771_5fb3489db586
 use std::io::{stdout, Read, Write};
 use std::net::TcpStream;
 use std::sync::Arc;
 
+use clap::Parser;
 use rustls::RootCertStore;
+
+#[derive(Debug, Clone)]
+enum Fingerprint {
+    Chrome108,
+    Firefox,
+    Safari,
+}
+
+impl From<&str> for Fingerprint {
+    fn from(s: &str) -> Self {
+        match s {
+            "chrome108" => Fingerprint::Chrome108,
+            "firefox" => Fingerprint::Firefox,
+            "safari" => Fingerprint::Safari,
+            _ => panic!("Invalid fingerprint"),
+        }
+    }
+}
+
+#[derive(Debug, Parser)]
+#[clap(version)]
+struct Opts {
+    #[clap(short, long, default_value = "chrome108")]
+    fingerprint: Fingerprint,
+
+    #[clap(short, long, default_value = "false")]
+    alpn: bool,
+}
 
 fn main() {
     let mut root_store = RootCertStore::empty();
@@ -21,21 +43,29 @@ fn main() {
             .iter()
             .cloned(),
     );
+    let opts = Opts::parse();
+
+    let fingerprint = match opts.fingerprint {
+        Fingerprint::Chrome108 => rustls::craft::CHROME_108
+            .get(opts.alpn)
+            .builder(),
+        Fingerprint::Firefox => rustls::craft::FIREFOX_105
+            .get(opts.alpn)
+            .builder(),
+        Fingerprint::Safari => rustls::craft::SAFARI_17_1
+            .get(opts.alpn)
+            .builder(),
+    };
+
     let mut config = rustls::ClientConfig::builder()
         .with_root_certificates(root_store)
         .with_no_client_auth()
-        .with_fingerprint(
-            rustls::craft::CHROME_108
-                .test_alpn_http1
-                .builder(),
-        );
+        .with_fingerprint(fingerprint);
 
     // Allow using SSLKEYLOGFILE.
     config.key_log = Arc::new(rustls::KeyLogFile::new());
 
-    let server_name = "tls.peet.ws"
-        .try_into()
-        .unwrap();
+    let server_name = "tls.peet.ws".try_into().unwrap();
     let mut conn = rustls::ClientConnection::new(Arc::new(config), server_name).unwrap();
     let mut sock = TcpStream::connect("tls.peet.ws:443").unwrap();
     let mut tls = rustls::Stream::new(&mut conn, &mut sock);
