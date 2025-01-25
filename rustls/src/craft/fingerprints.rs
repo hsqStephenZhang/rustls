@@ -1,3 +1,6 @@
+//! supported fingerprint: chrome108, firefox105, safari, edge106
+//!  The ios14 required tls10 tls11 tls13, sicne rustls does not support tls10 and tls11, we don't support ios14 fingerprint
+
 #![allow(missing_docs)]
 
 use super::*;
@@ -313,6 +316,12 @@ pub static FIREFOX_105_EXT: Vec<ExtensionSpec> = {
         Rustls(ClientExtension::EcPointFormats(vec![
             ECPointFormat::Uncompressed,
         ])),
+        Keep(OrDefault(
+            ExtensionType::SessionTicket,
+            ClientExtension::SessionTicket(crate::msgs::handshake::ClientSessionTicket::Offer(
+                Payload::Owned(vec![]),
+            )),
+        )),
         Craft(CraftExtension::Protocols(&[b"h2", b"http/1.1"])),
         Rustls(ClientExtension::CertificateStatusRequest(OCSP_REQ.clone())),
         Craft(CraftExtension::FakeDelegatedCredentials(&[
@@ -351,6 +360,7 @@ pub static EDGE_CIPHER: Vec<GreaseOrCipher> = {
     vec![
         GreaseOrCipher::Grease,
         TLS13_AES_128_GCM_SHA256.into(),
+        TLS13_AES_256_GCM_SHA384.into(),
         TLS13_AES_256_GCM_SHA384.into(),
         TLS13_CHACHA20_POLY1305_SHA256.into(),
         TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256.into(),
@@ -433,100 +443,3 @@ pub static EDGE_106_EXT: Vec<ExtensionSpec> = {
 
 define_fingerprint!(EDGE_106 { &EDGE_106_EXT, &EDGE_CIPHER });
 
-
-/// The cipher list of ios 14
-#[dynamic]
-pub static IOS_14_CIPHER: Vec<GreaseOrCipher> = {
-    use CipherSuite::*;
-    vec![
-        GreaseOrCipher::Grease,
-        TLS13_AES_128_GCM_SHA256.into(),
-        TLS13_AES_256_GCM_SHA384.into(),
-        TLS13_CHACHA20_POLY1305_SHA256.into(),
-        TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384.into(),
-        TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256.into(),
-        TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256.into(),
-        TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384.into(),
-        TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256.into(),
-        TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256.into(),
-        TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA384.into(),
-        TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256.into(),
-        TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA.into(),
-		TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA.into(),
-		TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384.into(),
-		TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256.into(),
-		TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA.into(),
-		TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA.into(),
-		TLS_RSA_WITH_AES_256_GCM_SHA384.into(),
-		TLS_RSA_WITH_AES_128_GCM_SHA256.into(),
-		TLS_RSA_WITH_AES_256_CBC_SHA256.into(),
-		TLS_RSA_WITH_AES_128_CBC_SHA256.into(),
-		TLS_RSA_WITH_AES_256_CBC_SHA.into(),
-		TLS_RSA_WITH_AES_128_CBC_SHA.into(),
-		TLS_ECDHE_ECDSA_WITH_3DES_EDE_CBC_SHA.into(),
-		TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA.into(),
-		TLS_RSA_WITH_3DES_EDE_CBC_SHA.into(),
-    ]
-};
-
-/// The signature algorithms of ios 14
-pub static IOS_14_SIGNATURE_ALGO: &[SignatureScheme] = &[
-    SignatureScheme::ECDSA_NISTP256_SHA256,
-    SignatureScheme::RSA_PSS_SHA256,
-    SignatureScheme::RSA_PKCS1_SHA256,
-    SignatureScheme::ECDSA_NISTP384_SHA384,
-    SignatureScheme::ECDSA_SHA1_Legacy,
-    SignatureScheme::RSA_PSS_SHA384,
-    SignatureScheme::RSA_PSS_SHA384,
-    SignatureScheme::RSA_PKCS1_SHA384,
-    SignatureScheme::RSA_PSS_SHA512,
-    SignatureScheme::RSA_PKCS1_SHA512,
-    SignatureScheme::RSA_PKCS1_SHA1,
-];
-
-#[dynamic]
-/// The extension list of ios 14
-pub static IOS_14_EXT: Vec<ExtensionSpec> = {
-    use ExtensionSpec::*;
-    use KeepExtension::*;
-    vec![
-        Craft(CraftExtension::Grease1),
-        Keep(Must(ExtensionType::ServerName)),
-        Rustls(ClientExtension::ExtendedMasterSecretRequest),
-        Craft(CraftExtension::RenegotiationInfo),
-        Craft(CraftExtension::SupportedCurves(&[
-            Grease,
-            GreaseOrCurve::T(NamedGroup::X25519),
-            GreaseOrCurve::T(NamedGroup::secp256r1),
-            GreaseOrCurve::T(NamedGroup::secp384r1),
-            GreaseOrCurve::T(NamedGroup::secp521r1),
-        ])),
-        Rustls(ClientExtension::EcPointFormats(vec![
-            ECPointFormat::Uncompressed,
-        ])),
-        Craft(CraftExtension::Protocols(&[b"h2", b"http/1.1"])),
-        Rustls(ClientExtension::CertificateStatusRequest(OCSP_REQ.clone())),
-        Rustls(ClientExtension::SignatureAlgorithms(
-            IOS_14_SIGNATURE_ALGO.to_vec(),
-        )),
-        Craft(CraftExtension::SignedCertificateTimestamp),
-        Craft(CraftExtension::KeyShare(&[
-            Grease,
-            GreaseOrCurve::T(NamedGroup::X25519),
-        ])),
-        Rustls(ClientExtension::PresharedKeyModes(vec![
-            PSKKeyExchangeMode::PSK_DHE_KE,
-        ])),
-        Craft(CraftExtension::SupportedVersions(&[
-            Grease,
-            GreaseOrVersion::T(ProtocolVersion::TLSv1_3),
-            GreaseOrVersion::T(ProtocolVersion::TLSv1_2),
-            GreaseOrVersion::T(ProtocolVersion::TLSv1_1),
-            GreaseOrVersion::T(ProtocolVersion::TLSv1_0),
-        ])),
-        Craft(CraftExtension::Grease2),
-        Craft(CraftExtension::Padding),
-    ]
-};
-
-define_fingerprint!(IOS_14 { &IOS_14_EXT, &IOS_14_CIPHER });
